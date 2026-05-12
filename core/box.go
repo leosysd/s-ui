@@ -17,6 +17,7 @@ import (
 	boxService "github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/httpclient"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
@@ -49,6 +50,7 @@ type Box struct {
 	dnsTransport        *dns.TransportManager
 	dnsRouter           *dns.Router
 	connection          *route.ConnectionManager
+	httpClient          adapter.LifecycleService
 	router              *route.Router
 	internalService     []adapter.LifecycleService
 	statsTracker        *StatsTracker
@@ -204,6 +206,9 @@ func NewBox(options Options) (*Box, error) {
 	service.MustRegister[adapter.NetworkManager](ctx, networkManager)
 	connectionManager := route.NewConnectionManager(logFactory.NewLogger("connection"))
 	service.MustRegister[adapter.ConnectionManager](ctx, connectionManager)
+	httpClientManager := httpclient.NewManager(ctx, logFactory.NewLogger("httpclient"), options.HTTPClients, routeOptions.DefaultHTTPClient)
+	service.MustRegister[adapter.HTTPClientManager](ctx, httpClientManager)
+	httpClientService := adapter.LifecycleService(httpClientManager)
 	router := route.NewRouter(ctx, logFactory, routeOptions, dnsOptions)
 	service.MustRegister[adapter.Router](ctx, router)
 	err = router.Initialize(routeOptions.Rules, routeOptions.RuleSet)
@@ -349,6 +354,11 @@ func NewBox(options Options) (*Box, error) {
 			option.LocalDNSServerOptions{},
 		)
 	})
+	httpClientManager.Initialize(func() (*httpclient.ManagedTransport, error) {
+		var httpClientOptions option.HTTPClientOptions
+		httpClientOptions.DefaultOutbound = true
+		return httpclient.NewTransport(ctx, logFactory.NewLogger("httpclient"), "", httpClientOptions)
+	})
 	if platformInterface != nil {
 		err = platformInterface.Initialize(networkManager)
 		if err != nil {
@@ -414,6 +424,7 @@ func NewBox(options Options) (*Box, error) {
 		certificateProvider: certificateProviderManager,
 		dnsRouter:           dnsRouter,
 		connection:          connectionManager,
+		httpClient:          httpClientService,
 		router:              router,
 		createdAt:           createdAt,
 		logFactory:          logFactory,
@@ -464,11 +475,11 @@ func (s *Box) preStart() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStateInitialize, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.inbound, s.endpoint, s.service, s.certificateProvider)
+	err = adapter.Start(s.logger, adapter.StartStateInitialize, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.httpClient, s.router, s.outbound, s.inbound, s.endpoint, s.service, s.certificateProvider)
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStateStart, s.outbound, s.dnsTransport, s.dnsRouter, s.network, s.connection, s.router, s.certificateProvider)
+	err = adapter.Start(s.logger, adapter.StartStateStart, s.outbound, s.dnsTransport, s.dnsRouter, s.network, s.connection, s.httpClient, s.router, s.certificateProvider)
 	if err != nil {
 		return err
 	}
@@ -488,7 +499,7 @@ func (s *Box) start() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStatePostStart, s.outbound, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.certificateProvider, s.inbound, s.endpoint, s.service)
+	err = adapter.Start(s.logger, adapter.StartStatePostStart, s.outbound, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.httpClient, s.router, s.certificateProvider, s.inbound, s.endpoint, s.service)
 	if err != nil {
 		return err
 	}
@@ -496,7 +507,7 @@ func (s *Box) start() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStateStarted, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.certificateProvider, s.inbound, s.endpoint, s.service)
+	err = adapter.Start(s.logger, adapter.StartStateStarted, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.httpClient, s.router, s.outbound, s.certificateProvider, s.inbound, s.endpoint, s.service)
 	if err != nil {
 		return err
 	}
@@ -526,6 +537,7 @@ func (s *Box) Close() error {
 		{"certificate-provider", s.certificateProvider},
 		{"outbound", s.outbound},
 		{"router", s.router},
+		{"http-client", s.httpClient},
 		{"connection", s.connection},
 		{"dns-router", s.dnsRouter},
 		{"dns-transport", s.dnsTransport},
