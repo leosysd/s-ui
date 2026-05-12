@@ -3,9 +3,9 @@
 
 **提示：原`alireza0/s-ui`项目被Github官方封禁，本仓库是基于原版的最后一个版本`v 1.4.1`的完整备份，包含完整的前端和后端源码。**
 
-**本仓库仅修改了默认语言和时区为中文，其他都对标原版无改动。你可以直接使用本仓库的脚本，也可以自行fork编译**
+**本仓库在原版 v1.4.1 基础上调整了中文默认体验，并将内置 sing-box 升级到 v1.14.0-alpha.23。安装脚本和 Release 均指向本仓库。**
 
-Note: The original alireza0/s-ui project has been blocked and removed by GitHub. This repository is a complete backup based on the last version v1.4.1 of the original, containing the full front-end and back-end source code. This repository only modifies the default language and time zone to Chinese, with no other changes compared to the original. You can directly use the scripts from this repository, or fork and compile it yourself.
+Note: The original alireza0/s-ui project has been blocked and removed by GitHub. This repository is based on the last original v1.4.1 codebase, keeps the complete frontend and backend source code, and upgrades the embedded sing-box to v1.14.0-alpha.23.
 
 > **免责声明：** 本项目仅供个人学习与交流使用，请勿用于非法用途。
 
@@ -41,11 +41,13 @@ Note: The original alireza0/s-ui project has been blocked and removed by GitHub.
 
 ### Linux/macOS
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/leosysd/s-ui/main/install.sh)
 ```
 
+> 使用安装脚本前，请先在本仓库发布对应架构的 Release 包；脚本会从 `leosysd/s-ui` 的最新 Release 下载 `s-ui-linux-<arch>.tar.gz`。
+
 ### Windows
-1. 从 [GitHub Releases](https://github.com/admin8800/s-ui/releases/latest) 下载最新 Windows 版本。
+1. 从 [GitHub Releases](https://github.com/leosysd/s-ui/releases/latest) 下载最新 Windows 版本。
 2. 解压 ZIP 文件。
 3. 以管理员身份运行 `install-windows.bat`。
 4. 按照安装向导操作。
@@ -58,8 +60,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh
 ## 手动安装
 
 ### Linux/macOS
-1. 根据你的系统和架构，从 GitHub 获取最新版本 S-UI：[https://github.com/admin8800/s-ui/releases/latest](https://github.com/admin8800/s-ui/releases/latest)
-2. **可选：** 获取最新版 `s-ui.sh`：[https://raw.githubusercontent.com/admin8800/s-ui/main/s-ui.sh](https://raw.githubusercontent.com/admin8800/s-ui/main/s-ui.sh)
+1. 根据你的系统和架构，从 GitHub 获取最新版本 S-UI：[https://github.com/leosysd/s-ui/releases/latest](https://github.com/leosysd/s-ui/releases/latest)
+2. **可选：** 获取最新版 `s-ui.sh`：[https://raw.githubusercontent.com/leosysd/s-ui/main/s-ui.sh](https://raw.githubusercontent.com/leosysd/s-ui/main/s-ui.sh)
 3. **可选：** 将 `s-ui.sh` 复制到 `/usr/bin/`，并执行 `chmod +x /usr/bin/s-ui`。
 4. 将 s-ui tar.gz 文件解压到你选择的目录，并进入解压后的目录。
 5. 将 `*.service` 文件复制到 `/etc/systemd/system/`，然后执行 `systemctl daemon-reload`。
@@ -67,7 +69,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh
 7. 使用 `systemctl enable sing-box --now` 启动 sing-box 服务。
 
 ### Windows
-1. 从 GitHub 获取最新 Windows 版本：[https://github.com/admin8800/s-ui/releases/latest](https://github.com/admin8800/s-ui/releases/latest)
+1. 从 GitHub 获取最新 Windows 版本：[https://github.com/leosysd/s-ui/releases/latest](https://github.com/leosysd/s-ui/releases/latest)
 2. 下载适合的 Windows 包，例如 `s-ui-windows-amd64.zip`。
 3. 将 ZIP 文件解压到你选择的目录。
 4. 以管理员身份运行 `install-windows.bat`。
@@ -108,7 +110,7 @@ curl -fsSL https://get.docker.com | sh
 ```shell
 services:
   s-ui:
-    image: ghcr.io/admin8800/s-ui
+    image: ghcr.io/leosysd/s-ui
     container_name: s-ui
     hostname: "s-ui"
     network_mode: host
@@ -132,13 +134,13 @@ docker run -itd \
     -v $PWD/cert/:/root/cert/ \
     --name s-ui \
     --restart=unless-stopped \
-    ghcr.io/admin8800/s-ui
+    ghcr.io/leosysd/s-ui
 ```
 
 > 自行构建镜像
 
 ```shell
-git clone https://github.com/admin8800/s-ui
+git clone https://github.com/leosysd/s-ui
 docker build -t s-ui .
 ```
 
@@ -157,7 +159,7 @@ docker build -t s-ui .
 ### 克隆仓库
 ```shell
 # 克隆仓库
-git clone https://github.com/admin8800/s-ui
+git clone https://github.com/leosysd/s-ui
 ```
 
 ### - 前端
