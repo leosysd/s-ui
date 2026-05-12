@@ -4,6 +4,8 @@ red='\033[0;31m'
 green='\033[0;32m'
 yellow='\033[0;33m'
 plain='\033[0m'
+SUI_REPO="${SUI_REPO:-leosysd/s-ui}"
+SUI_INSTALL_URL="${SUI_INSTALL_URL:-https://raw.githubusercontent.com/${SUI_REPO}/main/install.sh}"
 
 function LOGD() {
     echo -e "${yellow}[调试] $* ${plain}"
@@ -63,7 +65,7 @@ before_show_menu() {
 }
 
 install() {
-    bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh)
+    bash <(curl -Ls "$SUI_INSTALL_URL")
     if [[ $? == 0 ]]; then
         if [[ $# == 0 ]]; then
             start
@@ -82,7 +84,7 @@ update() {
         fi
         return 0
     fi
-    bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh)
+    bash <(curl -Ls "$SUI_INSTALL_URL")
     if [[ $? == 0 ]]; then
         LOGI "更新完成，面板已自动重启"
         exit 0
@@ -100,7 +102,7 @@ custom_version() {
 
     [[ "${panel_version}" != v* ]] && panel_version="v${panel_version}"
 
-    download_link="https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh"
+    download_link="$SUI_INSTALL_URL"
 
     install_command="bash <(curl -Ls $download_link) $panel_version"
 
@@ -297,7 +299,7 @@ show_log() {
 }
 
 update_shell() {
-    wget -O /usr/bin/s-ui -N --no-check-certificate https://github.com/admin8800/s-ui/raw/main/s-ui.sh
+    wget -O /usr/bin/s-ui -N --no-check-certificate "https://github.com/${SUI_REPO}/raw/main/s-ui.sh"
     if [[ $? != 0 ]]; then
         echo ""
         LOGE "下载脚本失败，请检查当前机器是否可以连接 Github"
