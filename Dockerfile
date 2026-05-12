@@ -10,7 +10,8 @@ WORKDIR /app
 ENV CGO_ENABLED=1
 ENV CC=clang
 ENV CXX=clang++
-ENV BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,badlinkname,tfogo_checklinkname0,with_tailscale"
+# Keep Naive enabled, but load Cronet from libcronet.so instead of linking libcronet.a.
+ENV BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clang \
@@ -24,7 +25,9 @@ COPY . .
 COPY --from=front-builder /app/dist/ /app/web/html/
 
 RUN go build -ldflags='-w -s -checklinkname=0 -extldflags "-fuse-ld=lld"' -tags "$BUILD_TAGS" -o sui main.go \
-    && file sui
+    && CRONET_LIB_DIR="$(go list -m -f '{{.Dir}}' github.com/sagernet/cronet-go/lib/linux_amd64)" \
+    && cp "$CRONET_LIB_DIR/libcronet.so" /app/libcronet.so \
+    && file sui libcronet.so
 
 FROM debian:bookworm-slim
 ENV TZ=Asia/Shanghai
@@ -38,5 +41,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=backend-builder /app/sui /app/
+COPY --from=backend-builder /app/libcronet.so /app/
 COPY entrypoint.sh /app/
 ENTRYPOINT [ "./entrypoint.sh" ]

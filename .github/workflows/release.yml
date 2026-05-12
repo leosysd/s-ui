@@ -14,7 +14,8 @@ permissions:
 
 env:
   NODE_VERSION: "22"
-  BUILD_TAGS: "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,badlinkname,tfogo_checklinkname0,with_tailscale"
+  # Keep Naive enabled, but load Cronet from libcronet.so instead of linking libcronet.a.
+  BUILD_TAGS: "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale"
 
 jobs:
   release-linux-amd64:
@@ -72,14 +73,20 @@ jobs:
           export CXX=clang++
           go version
           go build -ldflags='-w -s -checklinkname=0 -extldflags "-fuse-ld=lld"' -tags "$BUILD_TAGS" -o sui main.go
-          file sui
+          CRONET_LIB_DIR="$(go list -m -f '{{.Dir}}' github.com/sagernet/cronet-go/lib/linux_amd64)"
+          cp "$CRONET_LIB_DIR/libcronet.so" ./libcronet.so
+          test -s libcronet.so
+          ./sui -v
+          file sui libcronet.so
           ldd sui
+          ldd libcronet.so
 
       - name: 打包 Linux amd64
         run: |
           set -e
           mkdir s-ui
           cp sui s-ui/
+          cp libcronet.so s-ui/
           cp s-ui.service s-ui/
           cp s-ui.sh s-ui/
           tar -zcvf s-ui-linux-amd64.tar.gz s-ui
