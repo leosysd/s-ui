@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/admin8800/s-ui/config"
-	"github.com/admin8800/s-ui/database/model"
+	"github.com/leosysd/s-ui/config"
+	"github.com/leosysd/s-ui/database/model"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

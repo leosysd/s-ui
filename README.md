@@ -25,7 +25,8 @@ Note: The original alireza0/s-ui project has been blocked and removed by GitHub.
 ## 支持平台
 | 平台 | 架构 | 状态 |
 |----------|--------------|---------|
-| Linux | amd64, arm64, armv7, armv6, armv5, 386, s390x | 支持 |
+| Linux | amd64 | 本仓库 Release 已验证 |
+| Linux | arm64, armv7, armv6, armv5, 386, s390x | 需自行扩展 Release 工作流构建 |
 | Windows | amd64, 386, arm64 | 支持 |
 | macOS | amd64, arm64 | 实验性支持 |
 
@@ -44,7 +45,7 @@ Note: The original alireza0/s-ui project has been blocked and removed by GitHub.
 bash <(curl -Ls https://raw.githubusercontent.com/leosysd/s-ui/main/install.sh)
 ```
 
-> 使用安装脚本前，请先在本仓库发布对应架构的 Release 包；脚本会从 `leosysd/s-ui` 的最新 Release 下载 `s-ui-linux-<arch>.tar.gz`。
+> 使用安装脚本前，请先在本仓库发布 Release 包；当前工作流默认生成 `s-ui-linux-amd64.tar.gz`，适合常见 Debian VPS。
 
 ### Windows
 1. 从 [GitHub Releases](https://github.com/leosysd/s-ui/releases/latest) 下载最新 Windows 版本。

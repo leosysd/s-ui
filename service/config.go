@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/admin8800/s-ui/core"
-	"github.com/admin8800/s-ui/database"
-	"github.com/admin8800/s-ui/database/model"
-	"github.com/admin8800/s-ui/logger"
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/leosysd/s-ui/core"
+	"github.com/leosysd/s-ui/database"
+	"github.com/leosysd/s-ui/database/model"
+	"github.com/leosysd/s-ui/logger"
+	"github.com/leosysd/s-ui/util/common"
 )
 
 var (

@@ -37,6 +37,17 @@ arch() {
     esac
 }
 
+package_arch() {
+    local arch_name
+    arch_name=$(arch)
+    if [[ "$arch_name" != "amd64" ]]; then
+        echo -e "${red}当前 Release 工作流只发布 Linux amd64 包，检测到架构：${arch_name}${plain}" >&2
+        echo -e "${red}如果需要其他架构，请先自行扩展 Release 工作流并发布对应包。${plain}" >&2
+        exit 1
+    fi
+    echo "$arch_name"
+}
+
 echo "架构：$(arch)"
 
 install_base() {
@@ -117,6 +128,15 @@ config_after_install() {
     fi
 }
 
+backup_existing_db() {
+    if [[ -f "/usr/local/s-ui/db/s-ui.db" ]]; then
+        local backup_dir="/usr/local/s-ui/backups/db-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p "$backup_dir"
+        cp -a /usr/local/s-ui/db "$backup_dir/"
+        echo -e "${green}已备份现有数据库到：${backup_dir}/db${plain}"
+    fi
+}
+
 prepare_services() {
     if [[ -f "/etc/systemd/system/sing-box.service" ]]; then
         echo -e "${yellow}正在停止 sing-box 服务... ${plain}"
@@ -134,6 +154,8 @@ prepare_services() {
 
 install_s-ui() {
     cd /tmp/
+    local package_arch_name
+    package_arch_name=$(package_arch)
 
     if [ $# == 0 ]; then
         last_version=$(curl -Ls "https://api.github.com/repos/${SUI_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
@@ -142,7 +164,7 @@ install_s-ui() {
             exit 1
         fi
         echo -e "已获取 s-ui 最新版本：${last_version}，开始安装..."
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz https://github.com/${SUI_REPO}/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz
+        wget -N --no-check-certificate -O /tmp/s-ui-linux-${package_arch_name}.tar.gz https://github.com/${SUI_REPO}/releases/download/${last_version}/s-ui-linux-${package_arch_name}.tar.gz
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 s-ui 失败，请确认服务器可以访问 Github ${plain}"
             exit 1
@@ -150,9 +172,9 @@ install_s-ui() {
     else
         last_version=$1
         [[ "${last_version}" != v* ]] && last_version="v${last_version}"
-        url="https://github.com/${SUI_REPO}/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz"
+        url="https://github.com/${SUI_REPO}/releases/download/${last_version}/s-ui-linux-${package_arch_name}.tar.gz"
         echo -e "开始安装 s-ui ${last_version}"
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz ${url}
+        wget -N --no-check-certificate -O /tmp/s-ui-linux-${package_arch_name}.tar.gz ${url}
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 s-ui ${last_version} 失败，请检查该版本是否存在${plain}"
             exit 1
@@ -161,10 +183,11 @@ install_s-ui() {
 
     if [[ -e /usr/local/s-ui/ ]]; then
         systemctl stop s-ui
+        backup_existing_db
     fi
 
-    tar zxvf s-ui-linux-$(arch).tar.gz
-    rm s-ui-linux-$(arch).tar.gz -f
+    tar zxvf s-ui-linux-${package_arch_name}.tar.gz
+    rm s-ui-linux-${package_arch_name}.tar.gz -f
 
     chmod +x s-ui/sui s-ui/s-ui.sh
     cp s-ui/s-ui.sh /usr/bin/s-ui

@@ -1,47 +1,43 @@
-FROM --platform=$BUILDPLATFORM node:alpine AS front-builder
+FROM node:22-bookworm-slim AS front-builder
 WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci
 COPY frontend/ ./
-RUN npm install && npm run build
+RUN npm run build
 
-FROM golang:1.25-alpine AS backend-builder
+FROM golang:1.25-bookworm AS backend-builder
 WORKDIR /app
-ARG TARGETARCH
-ARG TARGETVARIANT
 ENV CGO_ENABLED=1
-ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
-ENV GOARCH=$TARGETARCH
+ENV CC=clang
+ENV CXX=clang++
+ENV BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,badlinkname,tfogo_checklinkname0,with_tailscale"
 
-RUN apk update && apk add --no-cache \
-    gcc \
-    musl-dev \
-    libc-dev \
-    make \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang \
+    lld \
+    ca-certificates \
+    file \
     git \
-    wget \
-    unzip \
-    bash \
-    curl
-
-ENV CC=gcc
-
-RUN CRONET_ARCH="$TARGETARCH" && \
-    CRONET_URL="https://github.com/SagerNet/cronet-go/releases/latest/download/libcronet-linux-${CRONET_ARCH}.so"; \
-    echo "Downloading $CRONET_URL" && \
-    wget -q -O ./libcronet.so "$CRONET_URL" && \
-    chmod 755 ./libcronet.so
+    && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 COPY --from=front-builder /app/dist/ /app/web/html/
 
-RUN if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
-    go build -ldflags="-w -s" \
-    -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,with_tailscale" \
-    -o sui main.go
+RUN go build -ldflags='-w -s -checklinkname=0 -extldflags "-fuse-ld=lld"' -tags "$BUILD_TAGS" -o sui main.go \
+    && ./sui -v \
+    && file sui
 
-FROM alpine
+FROM debian:bookworm-slim
 ENV TZ=Asia/Shanghai
 WORKDIR /app
-RUN set -ex && apk add --no-cache --upgrade bash tzdata ca-certificates nftables
-COPY --from=backend-builder /app/sui /app/libcronet.so /app/
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    nftables \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=backend-builder /app/sui /app/
 COPY entrypoint.sh /app/
 ENTRYPOINT [ "./entrypoint.sh" ]

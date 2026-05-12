@@ -127,7 +127,7 @@ uninstall() {
     rm /usr/local/s-ui/ -rf
 
     echo ""
-    echo -e "卸载成功。如果要删除此脚本，请在退出脚本后运行 ${green}rm /usr/local/s-ui -f${plain}。"
+    echo -e "卸载成功。如果要删除此脚本，请在退出脚本后运行 ${green}rm /usr/bin/s-ui -f${plain}。"
     echo ""
 
     if [[ $# == 0 ]]; then

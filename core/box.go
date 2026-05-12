@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/leosysd/s-ui/util/common"
 
 	"github.com/sagernet/sing-box/adapter"
 	boxCertificate "github.com/sagernet/sing-box/adapter/certificate"
