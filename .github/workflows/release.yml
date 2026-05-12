@@ -49,8 +49,9 @@ jobs:
           cd frontend
           npm ci
           npm run build
-          rm -rf ../web/html/*
-          cp -R dist/* ../web/html/
+          rm -rf ../web/html
+          mkdir -p ../web/html
+          cp -R dist/. ../web/html/
 
       - name: 设置 Go
         uses: actions/setup-go@v6
