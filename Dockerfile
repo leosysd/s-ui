@@ -24,7 +24,6 @@ COPY . .
 COPY --from=front-builder /app/dist/ /app/web/html/
 
 RUN go build -ldflags='-w -s -checklinkname=0 -extldflags "-fuse-ld=lld"' -tags "$BUILD_TAGS" -o sui main.go \
-    && ./sui -v \
     && file sui
 
 FROM debian:bookworm-slim
