@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
-	"io"
 	"net"
 	"sync"
 
@@ -19,6 +17,8 @@ type ConnectionInfo struct {
 	Conn       net.Conn
 	PacketConn network.PacketConn
 	Inbound    string
+	Outbound   string
+	User       string
 	Type       string // "tcp" or "udp"
 }
 
@@ -54,10 +54,12 @@ func (c *ConnTracker) generateConnectionID() string {
 func (c *ConnTracker) RoutedConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) net.Conn {
 	connID := c.generateConnectionID()
 	connInfo := &ConnectionInfo{
-		ID:      connID,
-		Conn:    conn,
-		Inbound: metadata.Inbound,
-		Type:    "tcp",
+		ID:       connID,
+		Conn:     conn,
+		Inbound:  metadata.Inbound,
+		Outbound: matchOutbound.Tag(),
+		User:     metadata.User,
+		Type:     "tcp",
 	}
 
 	c.trackConnection(connID, connInfo)
@@ -71,6 +73,8 @@ func (c *ConnTracker) RoutedPacketConnection(ctx context.Context, conn network.P
 		ID:         connID,
 		PacketConn: conn,
 		Inbound:    metadata.Inbound,
+		Outbound:   matchOutbound.Tag(),
+		User:       metadata.User,
 		Type:       "udp",
 	}
 
@@ -111,19 +115,14 @@ func (c *ConnTracker) untrackConnection(connID string) {
 	delete(c.connections, connID)
 }
 
-// shouldUntrackIOErr reports whether err indicates the connection is done (peer closed, reset, etc.).
-func shouldUntrackIOErr(err error) bool {
-	if err == nil {
-		return false
+func (c *ConnTracker) Snapshot() []ConnectionInfo {
+	c.access.Lock()
+	defer c.access.Unlock()
+	connections := make([]ConnectionInfo, 0, len(c.connections))
+	for _, connInfo := range c.connections {
+		connections = append(connections, *connInfo)
 	}
-	if errors.Is(err, io.EOF) {
-		return true
-	}
-	var ne net.Error
-	if errors.As(err, &ne) {
-		return !ne.Temporary()
-	}
-	return true
+	return connections
 }
 
 func (c *ConnTracker) createWrappedConn(conn net.Conn, connID string) *wrappedConn {
@@ -156,19 +155,11 @@ func (w *wrappedConn) doUntrack() {
 }
 
 func (w *wrappedConn) Read(b []byte) (int, error) {
-	n, err := w.Conn.Read(b)
-	if shouldUntrackIOErr(err) {
-		w.doUntrack()
-	}
-	return n, err
+	return w.Conn.Read(b)
 }
 
 func (w *wrappedConn) Write(b []byte) (int, error) {
-	n, err := w.Conn.Write(b)
-	if err != nil && shouldUntrackIOErr(err) {
-		w.doUntrack()
-	}
-	return n, err
+	return w.Conn.Write(b)
 }
 
 func (w *wrappedConn) Close() error {
@@ -194,19 +185,11 @@ func (w *wrappedPacketConn) doUntrack() {
 }
 
 func (w *wrappedPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	dest, err := w.PacketConn.ReadPacket(buffer)
-	if shouldUntrackIOErr(err) {
-		w.doUntrack()
-	}
-	return dest, err
+	return w.PacketConn.ReadPacket(buffer)
 }
 
 func (w *wrappedPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	err := w.PacketConn.WritePacket(buffer, destination)
-	if err != nil && shouldUntrackIOErr(err) {
-		w.doUntrack()
-	}
-	return err
+	return w.PacketConn.WritePacket(buffer, destination)
 }
 
 func (w *wrappedPacketConn) Close() error {
