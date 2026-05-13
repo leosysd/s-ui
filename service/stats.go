@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leosysd/s-ui/core"
-	"github.com/leosysd/s-ui/database"
-	"github.com/leosysd/s-ui/database/model"
+	"github.com/admin8800/s-ui/core"
+	"github.com/admin8800/s-ui/database"
+	"github.com/admin8800/s-ui/database/model"
 
 	"gorm.io/gorm"
 )
