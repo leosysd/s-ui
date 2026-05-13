@@ -2,10 +2,12 @@ package service
 
 import (
 	"sort"
+	"sync"
 	"time"
 
-	"github.com/admin8800/s-ui/database"
-	"github.com/admin8800/s-ui/database/model"
+	"github.com/leosysd/s-ui/core"
+	"github.com/leosysd/s-ui/database"
+	"github.com/leosysd/s-ui/database/model"
 
 	"gorm.io/gorm"
 )
@@ -16,7 +18,10 @@ type onlines struct {
 	Outbound []string `json:"outbound,omitempty"`
 }
 
-var onlineResources = &onlines{}
+var (
+	onlineResources   = &onlines{}
+	onlineResourcesMu sync.RWMutex
+)
 
 type StatsService struct {
 }
@@ -34,13 +39,10 @@ func (s *StatsService) SaveStats(enableTraffic bool) error {
 		return nil
 	}
 	stats := st.GetStats()
-
-	// Reset onlines
-	onlineResources.Inbound = nil
-	onlineResources.Outbound = nil
-	onlineResources.User = nil
+	currentOnline := currentOnlineResources(box)
 
 	if len(*stats) == 0 {
+		setOnlineResources(currentOnline)
 		return nil
 	}
 
@@ -71,14 +73,15 @@ func (s *StatsService) SaveStats(enableTraffic bool) error {
 		if stat.Direction {
 			switch stat.Resource {
 			case "inbound":
-				onlineResources.Inbound = append(onlineResources.Inbound, stat.Tag)
+				currentOnline.Inbound = appendUnique(currentOnline.Inbound, stat.Tag)
 			case "outbound":
-				onlineResources.Outbound = append(onlineResources.Outbound, stat.Tag)
+				currentOnline.Outbound = appendUnique(currentOnline.Outbound, stat.Tag)
 			case "user":
-				onlineResources.User = append(onlineResources.User, stat.Tag)
+				currentOnline.User = appendUnique(currentOnline.User, stat.Tag)
 			}
 		}
 	}
+	setOnlineResources(currentOnline)
 
 	if !enableTraffic {
 		return nil
@@ -153,8 +156,51 @@ func (s *StatsService) downsampleStats(stats []model.Stats, maxRows int) []model
 }
 
 func (s *StatsService) GetOnlines() (onlines, error) {
-	return *onlineResources, nil
+	onlineResourcesMu.RLock()
+	defer onlineResourcesMu.RUnlock()
+	return onlines{
+		Inbound:  append([]string(nil), onlineResources.Inbound...),
+		User:     append([]string(nil), onlineResources.User...),
+		Outbound: append([]string(nil), onlineResources.Outbound...),
+	}, nil
 }
+
+func setOnlineResources(resources onlines) {
+	onlineResourcesMu.Lock()
+	defer onlineResourcesMu.Unlock()
+	onlineResources = &onlines{
+		Inbound:  append([]string(nil), resources.Inbound...),
+		User:     append([]string(nil), resources.User...),
+		Outbound: append([]string(nil), resources.Outbound...),
+	}
+}
+
+func currentOnlineResources(box *core.Box) onlines {
+	tracker := box.ConnTracker()
+	if tracker == nil {
+		return onlines{}
+	}
+	resources := onlines{}
+	for _, conn := range tracker.Snapshot() {
+		resources.Inbound = appendUnique(resources.Inbound, conn.Inbound)
+		resources.User = appendUnique(resources.User, conn.User)
+		resources.Outbound = appendUnique(resources.Outbound, conn.Outbound)
+	}
+	return resources
+}
+
+func appendUnique(values []string, value string) []string {
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
 func (s *StatsService) DelOldStats(days int) error {
 	oldTime := time.Now().AddDate(0, 0, -(days)).Unix()
 	db := database.GetDB()
