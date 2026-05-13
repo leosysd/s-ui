@@ -84,9 +84,14 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 	jsonConfig["outbounds"] = outbounds
 
 	// Add other objects from settings
-	j.addOthers(&jsonConfig)
+	if err = j.addOthers(&jsonConfig); err != nil {
+		return nil, nil, err
+	}
 
-	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
+	result, err := json.MarshalIndent(jsonConfig, "", "  ")
+	if err != nil {
+		return nil, nil, err
+	}
 	resultStr := string(result)
 
 	updateInterval, _ := j.SettingService.GetSubUpdates()
@@ -244,8 +249,50 @@ func (j *JsonService) addDefaultOutbounds(outbounds *[]map[string]interface{}, o
 	*outbounds = append(outbound, *outbounds...)
 }
 
+func appendJSONList(dst []interface{}, value interface{}) []interface{} {
+	if value == nil {
+		return dst
+	}
+	if list, ok := value.([]interface{}); ok {
+		return append(dst, list...)
+	}
+	return append(dst, value)
+}
+
+func mergeRuleSets(dst []interface{}, value interface{}) []interface{} {
+	for _, item := range appendJSONList(nil, value) {
+		ruleSet, ok := item.(map[string]interface{})
+		if !ok {
+			dst = append(dst, item)
+			continue
+		}
+		tag, _ := ruleSet["tag"].(string)
+		if tag == "" {
+			dst = append(dst, item)
+			continue
+		}
+		replaced := false
+		for i, existing := range dst {
+			existingRuleSet, ok := existing.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			existingTag, _ := existingRuleSet["tag"].(string)
+			if existingTag == tag {
+				dst[i] = item
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			dst = append(dst, item)
+		}
+	}
+	return dst
+}
+
 func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
-	rules_start := []interface{}{
+	rulesStart := []interface{}{
 		map[string]interface{}{
 			"action": "sniff",
 		},
@@ -255,7 +302,7 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 			"outbound":   "direct",
 		},
 	}
-	rules_end := []interface{}{
+	rulesEnd := []interface{}{
 		map[string]interface{}{
 			"clash_mode": "Global",
 			"action":     "route",
@@ -265,7 +312,7 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	route := map[string]interface{}{
 		"auto_detect_interface": true,
 		"final":                 "proxy",
-		"rules":                 rules_start,
+		"rules":                 rulesStart,
 	}
 
 	othersStr, err := j.SettingService.GetSubJsonExt()
@@ -293,15 +340,43 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	if _, ok := othersJson["experimental"]; ok {
 		(*jsonConfig)["experimental"] = othersJson["experimental"]
 	}
+	if _, ok := othersJson["http_clients"]; ok {
+		(*jsonConfig)["http_clients"] = othersJson["http_clients"]
+	}
+
+	var settingRules []interface{}
+	var ruleSets []interface{}
+	if routeExt, ok := othersJson["route"].(map[string]interface{}); ok {
+		for key, value := range routeExt {
+			switch key {
+			case "rules":
+				settingRules = appendJSONList(settingRules, value)
+			case "rule_set":
+				ruleSets = mergeRuleSets(ruleSets, value)
+			default:
+				route[key] = value
+			}
+		}
+	}
 	if _, ok := othersJson["rule_set"]; ok {
-		route["rule_set"] = othersJson["rule_set"]
+		ruleSets = mergeRuleSets(ruleSets, othersJson["rule_set"])
 	}
-	if settingRules, ok := othersJson["rules"].([]interface{}); ok {
-		rules := append(rules_start, settingRules...)
-		route["rules"] = append(rules, rules_end...)
+	if _, ok := othersJson["rules"]; ok {
+		settingRules = appendJSONList(settingRules, othersJson["rules"])
 	}
-	if defaultDomainResolver, ok := othersJson["default_domain_resolver"].(string); ok {
-		route["default_domain_resolver"] = defaultDomainResolver
+	if _, ok := othersJson["default_domain_resolver"]; ok {
+		route["default_domain_resolver"] = othersJson["default_domain_resolver"]
+	}
+	if _, ok := othersJson["default_http_client"]; ok {
+		route["default_http_client"] = othersJson["default_http_client"]
+	}
+	if len(ruleSets) > 0 {
+		route["rule_set"] = ruleSets
+	}
+	if len(settingRules) > 0 {
+		rules := append([]interface{}{}, rulesStart...)
+		rules = append(rules, settingRules...)
+		route["rules"] = append(rules, rulesEnd...)
 	}
 	(*jsonConfig)["route"] = route
 

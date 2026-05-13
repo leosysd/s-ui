@@ -17,12 +17,14 @@ import (
 	boxService "github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/httpclient"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/dns/transport/local"
 	"github.com/sagernet/sing-box/experimental"
 	"github.com/sagernet/sing-box/experimental/cachefile"
+	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/direct"
@@ -50,6 +52,7 @@ type Box struct {
 	dnsRouter           *dns.Router
 	connection          *route.ConnectionManager
 	router              *route.Router
+	httpClientService   adapter.LifecycleService
 	internalService     []adapter.LifecycleService
 	statsTracker        *StatsTracker
 	connTracker         *ConnTracker
@@ -196,6 +199,7 @@ func NewBox(options Options) (*Box, error) {
 		return nil, common.NewError("initialize dns router", err)
 	}
 	service.MustRegister[adapter.DNSRouter](ctx, dnsRouter)
+	service.MustRegister[adapter.DNSRuleSetUpdateValidator](ctx, dnsRouter)
 
 	networkManager, err := route.NewNetworkManager(ctx, logFactory.NewLogger("network"), routeOptions, dnsOptions)
 	if err != nil {
@@ -204,6 +208,9 @@ func NewBox(options Options) (*Box, error) {
 	service.MustRegister[adapter.NetworkManager](ctx, networkManager)
 	connectionManager := route.NewConnectionManager(logFactory.NewLogger("connection"))
 	service.MustRegister[adapter.ConnectionManager](ctx, connectionManager)
+	httpClientManager := httpclient.NewManager(ctx, logFactory.NewLogger("httpclient"), options.HTTPClients, routeOptions.DefaultHTTPClient)
+	service.MustRegister[adapter.HTTPClientManager](ctx, httpClientManager)
+	httpClientService := adapter.LifecycleService(httpClientManager)
 	router := route.NewRouter(ctx, logFactory, routeOptions, dnsOptions)
 	service.MustRegister[adapter.Router](ctx, router)
 	err = router.Initialize(routeOptions.Rules, routeOptions.RuleSet)
@@ -349,6 +356,12 @@ func NewBox(options Options) (*Box, error) {
 			option.LocalDNSServerOptions{},
 		)
 	})
+	httpClientManager.Initialize(func() (*httpclient.ManagedTransport, error) {
+		deprecated.Report(ctx, deprecated.OptionImplicitDefaultHTTPClient)
+		var httpClientOptions option.HTTPClientOptions
+		httpClientOptions.DefaultOutbound = true
+		return httpclient.NewTransport(ctx, logFactory.NewLogger("httpclient"), "", httpClientOptions)
+	})
 	if platformInterface != nil {
 		err = platformInterface.Initialize(networkManager)
 		if err != nil {
@@ -415,6 +428,7 @@ func NewBox(options Options) (*Box, error) {
 		dnsRouter:           dnsRouter,
 		connection:          connectionManager,
 		router:              router,
+		httpClientService:   httpClientService,
 		createdAt:           createdAt,
 		logFactory:          logFactory,
 		logger:              logFactory.Logger(),
@@ -468,7 +482,15 @@ func (s *Box) preStart() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStateStart, s.outbound, s.dnsTransport, s.dnsRouter, s.network, s.connection, s.router, s.certificateProvider)
+	err = adapter.Start(s.logger, adapter.StartStateStart, s.outbound, s.dnsTransport, s.network, s.connection)
+	if err != nil {
+		return err
+	}
+	err = adapter.StartNamed(s.logger, adapter.StartStateStart, []adapter.LifecycleService{s.httpClientService})
+	if err != nil {
+		return err
+	}
+	err = adapter.Start(s.logger, adapter.StartStateStart, s.router, s.dnsRouter, s.certificateProvider)
 	if err != nil {
 		return err
 	}
@@ -549,6 +571,24 @@ func (s *Box) Close() error {
 			}
 			err = errors.Join(err, closeErr)
 			s.logger.Trace("close ", closeItem.name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
+		}()
+	}
+	if s.httpClientService != nil {
+		func() {
+			defer func() {
+				if v := recover(); v != nil {
+					err = errors.Join(err, common.NewError(fmt.Errorf("panic: %v", v), "close "+s.httpClientService.Name()))
+					s.logger.Error("panic closing ", s.httpClientService.Name(), ": ", v)
+				}
+			}()
+			s.logger.Trace("close ", s.httpClientService.Name())
+			startTime := time.Now()
+			closeErr := s.httpClientService.Close()
+			if closeErr != nil {
+				closeErr = common.NewError(closeErr, "close "+s.httpClientService.Name())
+			}
+			err = errors.Join(err, closeErr)
+			s.logger.Trace("close ", s.httpClientService.Name(), " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 		}()
 	}
 	for _, lifecycleService := range s.internalService {
