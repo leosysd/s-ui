@@ -16,23 +16,26 @@ func NewCronJob() *CronJob {
 
 func (c *CronJob) Start(loc *time.Location, trafficAge int) error {
 	c.cron = cron.New(cron.WithLocation(loc), cron.WithSeconds())
-	c.cron.Start()
 
-	go func() {
-		// Start stats job
-		c.cron.AddJob("@every 10s", NewStatsJob(trafficAge > 0))
-		// Start expiry job
-		c.cron.AddJob("@every 1m", NewDepleteJob())
-		// Start deleting old stats
-		if trafficAge > 0 {
-			c.cron.AddJob("@daily", NewDelStatsJob(trafficAge))
+	if _, err := c.cron.AddJob("@every 10s", NewStatsJob(trafficAge > 0)); err != nil {
+		return err
+	}
+	if _, err := c.cron.AddJob("@every 1m", NewDepleteJob()); err != nil {
+		return err
+	}
+	if trafficAge > 0 {
+		if _, err := c.cron.AddJob("@daily", NewDelStatsJob(trafficAge)); err != nil {
+			return err
 		}
-		// Start core if it is not running
-		c.cron.AddJob("@every 5s", NewCheckCoreJob())
-		// database WAL checkpoint
-		c.cron.AddJob("@every 10m", NewWALCheckpointJob())
-	}()
+	}
+	if _, err := c.cron.AddJob("@every 5s", NewCheckCoreJob()); err != nil {
+		return err
+	}
+	if _, err := c.cron.AddJob("@every 10m", NewWALCheckpointJob()); err != nil {
+		return err
+	}
 
+	c.cron.Start()
 	return nil
 }
 
