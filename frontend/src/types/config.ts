@@ -65,6 +65,7 @@ interface RouteRuleSet {
   format: string
   path?: string
   url?: string
+  http_client?: string | Record<string, any>
   download_detour?: string
   update_interval?: string
 }

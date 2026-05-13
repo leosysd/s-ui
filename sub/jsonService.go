@@ -84,7 +84,10 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 	jsonConfig["outbounds"] = outbounds
 
 	// Add other objects from settings
-	j.addOthers(&jsonConfig)
+	if err = j.addOthers(&jsonConfig); err != nil {
+		return nil, nil, err
+	}
+	j.normalizeJsonConfig(&jsonConfig)
 
 	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
 	resultStr := string(result)
@@ -293,6 +296,27 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	if _, ok := othersJson["experimental"]; ok {
 		(*jsonConfig)["experimental"] = othersJson["experimental"]
 	}
+	if _, ok := othersJson["http_clients"]; ok {
+		(*jsonConfig)["http_clients"] = othersJson["http_clients"]
+	}
+
+	if routeJson, ok := othersJson["route"].(map[string]interface{}); ok {
+		for key, value := range routeJson {
+			switch key {
+			case "rules", "rule_set":
+				continue
+			default:
+				route[key] = value
+			}
+		}
+		if _, ok := routeJson["rule_set"]; ok {
+			route["rule_set"] = routeJson["rule_set"]
+		}
+		if settingRules, ok := routeJson["rules"].([]interface{}); ok {
+			rules := append(rules_start, settingRules...)
+			route["rules"] = append(rules, rules_end...)
+		}
+	}
 	if _, ok := othersJson["rule_set"]; ok {
 		route["rule_set"] = othersJson["rule_set"]
 	}
@@ -303,9 +327,122 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	if defaultDomainResolver, ok := othersJson["default_domain_resolver"].(string); ok {
 		route["default_domain_resolver"] = defaultDomainResolver
 	}
+	if defaultHTTPClient, ok := othersJson["default_http_client"].(string); ok {
+		route["default_http_client"] = defaultHTTPClient
+	}
 	(*jsonConfig)["route"] = route
 
 	return nil
+}
+
+func (j *JsonService) normalizeJsonConfig(jsonConfig *map[string]interface{}) {
+	route, ok := (*jsonConfig)["route"].(map[string]interface{})
+	if !ok {
+		route = map[string]interface{}{}
+		(*jsonConfig)["route"] = route
+	}
+
+	resolverTag := j.defaultDomainResolverTag(*jsonConfig)
+	if _, ok := route["default_domain_resolver"]; !ok && resolverTag != "" {
+		route["default_domain_resolver"] = resolverTag
+	}
+
+	if ruleSets, ok := route["rule_set"]; ok {
+		route["rule_set"] = normalizeRemoteRuleSets(ruleSets, resolverTag)
+	}
+	if httpClients, ok := (*jsonConfig)["http_clients"]; ok {
+		(*jsonConfig)["http_clients"] = normalizeHTTPClients(httpClients, resolverTag)
+	}
+}
+
+func (j *JsonService) defaultDomainResolverTag(jsonConfig map[string]interface{}) string {
+	dns, ok := jsonConfig["dns"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	servers, ok := dns["servers"].([]interface{})
+	if !ok || len(servers) == 0 {
+		return ""
+	}
+	firstTag := ""
+	for _, server := range servers {
+		serverMap, ok := server.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tag, _ := serverMap["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		if firstTag == "" {
+			firstTag = tag
+		}
+		if tag == "direct-dns" || tag == "local-dns" {
+			return tag
+		}
+	}
+	return firstTag
+}
+
+func normalizeRemoteRuleSets(ruleSets interface{}, resolverTag string) interface{} {
+	items, ok := ruleSets.([]interface{})
+	if !ok {
+		return ruleSets
+	}
+	for index, item := range items {
+		ruleSet, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if ruleSet["type"] == "remote" {
+			normalizeRemoteRuleSet(ruleSet, resolverTag)
+		}
+		items[index] = ruleSet
+	}
+	return items
+}
+
+func normalizeRemoteRuleSet(ruleSet map[string]interface{}, resolverTag string) {
+	if _, ok := ruleSet["http_client"]; ok {
+		if httpClient, ok := ruleSet["http_client"].(map[string]interface{}); ok && resolverTag != "" {
+			if _, ok := httpClient["domain_resolver"]; !ok {
+				httpClient["domain_resolver"] = resolverTag
+			}
+			ruleSet["http_client"] = httpClient
+		}
+		delete(ruleSet, "download_detour")
+		return
+	}
+	downloadDetour, ok := ruleSet["download_detour"].(string)
+	delete(ruleSet, "download_detour")
+	if !ok || downloadDetour == "" {
+		return
+	}
+	httpClient := map[string]interface{}{
+		"detour": downloadDetour,
+	}
+	if resolverTag != "" {
+		httpClient["domain_resolver"] = resolverTag
+	}
+	ruleSet["http_client"] = httpClient
+}
+
+func normalizeHTTPClients(httpClients interface{}, resolverTag string) interface{} {
+	items, ok := httpClients.([]interface{})
+	if !ok || resolverTag == "" {
+		return httpClients
+	}
+	for index, item := range items {
+		httpClient, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if _, ok := httpClient["domain_resolver"]; !ok {
+			httpClient["domain_resolver"] = resolverTag
+		}
+		items[index] = httpClient
+	}
+	return items
 }
 
 func (j *JsonService) pushMixed(outbounds *[]map[string]interface{}, outTags *[]string, out map[string]interface{}) {

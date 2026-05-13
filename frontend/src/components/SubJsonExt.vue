@@ -213,20 +213,23 @@ export default {
       defaultDns: {
         "servers": [
           {
-            "type": "tcp",
-            "tag": "proxy-dns",
-            "server": "8.8.8.8",
-            "server_port": 53,
-            "detour": "proxy",
-            "domain_resolver": "local-dns",
-          },
-          { 
             "tag": "direct-dns",
-            "type": "local",
+            "type": "udp",
+            "server": "223.5.5.5",
+            "server_port": 53
           },
           {
-            "tag": "local-dns",
-            "type": "local",
+            "tag": "proxy-dns",
+            "type": "https",
+            "server": "1.1.1.1",
+            "server_port": 443,
+            "path": "/dns-query",
+            "tls": {
+              "enabled": true,
+              "server_name": "cloudflare-dns.com"
+            },
+            "detour": "proxy",
+            "domain_resolver": "direct-dns"
           }
         ],
         "rules": [
@@ -253,7 +256,7 @@ export default {
             "server": "proxy-dns"
           },
         ],
-        "final": "local-dns",
+        "final": "proxy-dns",
         "strategy": "prefer_ipv4"
       },
       geositeList: [
@@ -280,63 +283,63 @@ export default {
           type: "remote",
           format: "binary",
           url: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/category-ads-all.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         },
         {
           tag: "geosite-private",
           type: "remote",
           format: "binary",
           url: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/private.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         },
         {
           tag: "geosite-ir",
           type: "remote",
           format: "binary",
           url: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/category-ir.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         },
         {
           tag: "geosite-cn",
           type: "remote",
           format: "binary",
           url: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/cn.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         },
         {
           tag: "geosite-vn",
           type: "remote",
           format: "binary",
           url: "https://github.com/Thaomtam/Geosite-vn/raw/rule-set/Geosite-vn.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         },
         {
           tag: "geoip-private",
           type: "remote",
           format: "binary",
           url: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/private.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         },
         {
           tag: "geoip-ir",
           type: "remote",
           format: "binary",
           url: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/ir.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         },
         {
           tag: "geoip-cn",
           type: "remote",
           format: "binary",
           url: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/cn.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         },
         {
           tag: "geoip-vn",
           type: "remote",
           format: "binary",
           url: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/vn.srs",
-          download_detour: "direct"
+          http_client: { detour: "direct", domain_resolver: "direct-dns" }
         }
       ],
     }
@@ -351,13 +354,15 @@ export default {
       set(v:boolean) {
         if (v) {
           this.subJsonExt.dns = this.defaultDns
+          this.subJsonExt.default_domain_resolver = "direct-dns"
           if (this.rules == undefined) this.subJsonExt.rules = [{ action: 'sniff' }]
           this.subJsonExt.rules.unshift({ protocol: "dns", action: "hijack-dns" })
         } else {
           delete this.subJsonExt.dns
+          delete this.subJsonExt.default_domain_resolver
           const rules = this.subJsonExt?.rules?.filter((r:any) => r.protocol != "dns") ?? []
           if (rules.length >= 0) this.subJsonExt.rules = rules
-          if (this.rules.length == 0) delete this.subJsonExt.rules
+          if (this.rules?.length == 0) delete this.subJsonExt.rules
         }
       }
     },
@@ -372,12 +377,12 @@ export default {
     dns():any { return this.subJsonExt?.dns?? undefined },
     proxyDns: {
       get() :any { return this.dns?.servers?.findLast((d:any) => d.tag == "proxy-dns")?? {} },
-      set(v:any) { 
+      set(v:any) {
         let sIndex = this.dns.servers.findIndex((d:any) => d.tag == "proxy-dns")
         if (sIndex === -1 || sIndex == undefined) {
-          this.dns.servers.push({ ...this.defaultDns.servers[0], ...v })
+          this.dns.servers.push({ ...this.defaultDns.servers[1], ...v })
         } else {
-          this.dns.servers[sIndex] = { ...this.defaultDns.servers[0], ...v }
+          this.dns.servers[sIndex] = { ...this.defaultDns.servers[1], ...v }
         }
       }
     },
@@ -386,9 +391,9 @@ export default {
       set(v:any) {
         const sIndex = this.dns.servers.findIndex((d:any) => d.tag == "direct-dns")
         if (sIndex === -1 || sIndex == undefined) {
-          this.dns.servers.push({ ...this.defaultDns.servers[1], ...v })
+          this.dns.servers.push({ ...this.defaultDns.servers[0], ...v })
         } else {
-          this.dns.servers[sIndex] = { ...this.defaultDns.servers[1], ...v }
+          this.dns.servers[sIndex] = { ...this.defaultDns.servers[0], ...v }
         }
       },
     },
@@ -480,7 +485,7 @@ export default {
       } else {
         delete this.subJsonExt.rule_set
       }
-      if (this.rules.length == 0) delete this.subJsonExt.rules
+      if (this.rules?.length == 0) delete this.subJsonExt.rules
     },
     openEditor() {
       this.enableEditor = true

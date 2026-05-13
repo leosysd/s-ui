@@ -76,6 +76,7 @@ export interface ruleset {
   format: 'source' | 'binary'
   path?: string
   url?: string
+  http_client?: string | any
   download_detour?: string
   update_interval?: string
 }

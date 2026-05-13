@@ -97,7 +97,7 @@
         </v-card-subtitle>
         <v-card-text>
           <v-row><v-col>{{ $t('ruleset.format') }}</v-col><v-col>{{ item.format }}</v-col></v-row>
-          <v-row><v-col>{{ $t('objects.outbound') }}</v-col><v-col>{{ item.download_detour ?? '-' }}</v-col></v-row>
+          <v-row><v-col>{{ $t('objects.outbound') }}</v-col><v-col>{{ rulesetDetour(item) }}</v-col></v-row>
           <v-row><v-col>{{ $t('actions.update') }}</v-col><v-col>{{ item.update_interval ?? '-' }}</v-col></v-row>
         </v-card-text>
         <v-divider></v-divider>
@@ -222,6 +222,12 @@ const rulesets = computed((): any[] => {
 })
 
 const rulesetTags = computed((): string[] => rulesets.value.map((rs:any) => rs.tag))
+
+const rulesetDetour = (item:any): string => {
+  if (typeof item.http_client == 'object') return item.http_client?.detour ?? '-'
+  if (typeof item.http_client == 'string') return item.http_client
+  return item.download_detour ?? '-'
+}
 
 const outboundTags = computed((): string[] => [
   ...Data().outbounds?.map((o:any) => o.tag),
