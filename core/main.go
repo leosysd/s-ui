@@ -3,7 +3,7 @@ package core
 import (
 	"context"
 
-	"github.com/admin8800/s-ui/logger"
+	"github.com/leosysd/s-ui/logger"
 
 	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
@@ -53,6 +53,7 @@ func (c *Core) Start(sbConfig []byte) error {
 	err := opt.UnmarshalJSONContext(globalCtx, sbConfig)
 	if err != nil {
 		logger.Error("Unmarshal config err:", err.Error())
+		return err
 	}
 
 	c.instance, err = NewBox(Options{
