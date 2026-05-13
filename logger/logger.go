@@ -3,14 +3,22 @@ package logger
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/op/go-logging"
 )
 
+const (
+	maxLogBufferSize = 10240
+	maxLogLineLength = 4096
+)
+
 var (
-	logger    *logging.Logger
-	logBuffer []struct {
+	logger      *logging.Logger
+	loggerLevel logging.Level
+	logBufferMu sync.RWMutex
+	logBuffer   []struct {
 		time  string
 		level logging.Level
 		log   string
@@ -51,6 +59,7 @@ func InitLogger(level logging.Level) {
 	newLogger.SetBackend(backendLeveled)
 
 	logger = newLogger
+	loggerLevel = level
 }
 
 func GetLogger() *logging.Logger {
@@ -98,12 +107,22 @@ func Errorf(format string, args ...interface{}) {
 }
 
 func addToBuffer(level string, newLog string) {
+	if len(newLog) > maxLogLineLength {
+		newLog = newLog[:maxLogLineLength] + "...(truncated)"
+	}
 	t := time.Now()
-	if len(logBuffer) >= 10240 {
+	logLevel, _ := logging.LogLevel(level)
+	if logLevel > loggerLevel {
+		return
+	}
+
+	logBufferMu.Lock()
+	defer logBufferMu.Unlock()
+
+	if len(logBuffer) >= maxLogBufferSize {
 		logBuffer = logBuffer[1:]
 	}
 
-	logLevel, _ := logging.LogLevel(level)
 	logBuffer = append(logBuffer, struct {
 		time  string
 		level logging.Level
@@ -116,12 +135,19 @@ func addToBuffer(level string, newLog string) {
 }
 
 func GetLogs(c int, level string) []string {
+	if c <= 0 {
+		return nil
+	}
 	var output []string
 	logLevel, _ := logging.LogLevel(level)
 
-	for i := len(logBuffer) - 1; i >= 0 && len(output) <= c; i-- {
-		if logBuffer[i].level <= logLevel {
-			output = append(output, fmt.Sprintf("%s %s - %s", logBuffer[i].time, logBuffer[i].level, logBuffer[i].log))
+	logBufferMu.RLock()
+	defer logBufferMu.RUnlock()
+
+	for i := len(logBuffer) - 1; i >= 0 && len(output) < c; i-- {
+		entry := logBuffer[i]
+		if entry.level <= logLevel {
+			output = append(output, fmt.Sprintf("%s %s - %s", entry.time, entry.level, entry.log))
 		}
 	}
 	return output
